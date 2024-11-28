@@ -65,13 +65,15 @@ const callStudents = async (req, res) => {
       return res.status(400).json({ message: 'Не нашёл указанную машину' })
     }
 
+    const limit = ['BA', 'BM'].includes(car.carType) ? 4 : 1
+
     const nextQueues = await Queue.find({
       status: 'waiting',
       type: car.carType,
       departmentId: car.departmentId
     })
       .sort({ createdAt: 1 })
-      .limit(4)
+      .limit(limit)
 
     if (!nextQueues) {
       return res.status(204).end()
@@ -155,6 +157,35 @@ const endPractice = async (req, res) => {
     const { carId } = req.params
 
     const car = await Car.findById(carId)
+
+    if (!car) {
+      return res.status(404).json({ message: 'Такой машины нет в БД' })
+    }
+
+    car.status = 'available'
+    car.isAvailable = true
+    const savedCar = await car.save()
+
+    const currentCarQueues = await Queue.find({
+      currentCar: car._id,
+      status: 'in-progress',
+      departmentId: car.departmentId
+    })
+
+    if (!currentCarQueues) {
+      return res.status(400).json({ message: 'Нет очереди' })
+    }
+
+    for (const queue of currentCarQueues) {
+      queue.endServiceTime = new Date()
+      queue.status = 'completed'
+      queue.currentCar = null
+      queue.servicedBy = car._id
+
+      await queue.save()
+    }
+
+    res.status(200).json({ message: 'Практика закончена', car: savedCar })
   } catch (error) {
     console.log(error)
     res.status(500).json({
@@ -164,8 +195,62 @@ const endPractice = async (req, res) => {
   }
 }
 
+const skipQueue = async (req, res) => {
+  try {
+    const { queueId, carId } = req.body
+
+    const queue = await Queue.findById(queueId)
+
+    if (!queue) {
+      return res.status(404).json({ message: 'Такой очереди нет' })
+    }
+
+    const car = await Car.findById(carId).lean()
+
+    if (!car) {
+      return res.status(404).json({ message: 'Такой машины нет' })
+    }
+
+    queue.currentCar = null
+    queue.skippedTime = new Date()
+    queue.servicedBy = car._id
+
+    const skippedQueue = await queue.save()
+
+    const nextQueue = await Queue.findOne({
+      status: 'waiting',
+      type: car.carType,
+      departmentId: car.departmentId
+    }).sort({ createdAt: 1 })
+
+    if (!nextQueue) {
+      return res.status(204).end()
+    }
+
+    nextQueue.currentCar = car._id
+    nextQueue.startCallingTime = new Date()
+    nextQueue.status = 'calling'
+
+    const updatedNextQueue = await nextQueue.save()
+
+    return res.status(200).json({
+      message: 'Следуйщий клиент получен',
+      nextQueue: updatedNextQueue,
+      skippedQueue
+    })
+  } catch (error) {
+    console.log(error.message)
+    res.status(500).json({
+      message: 'Ошибка при пропуске очереди',
+      errorMessage: error.message
+    })
+  }
+}
+
 module.exports = {
   addNewQueue,
   callStudents,
-  startPractice
+  startPractice,
+  endPractice,
+  skipQueue
 }
