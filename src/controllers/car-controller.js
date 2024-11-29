@@ -77,7 +77,30 @@ const removeCar = async (req, res) => {
   }
 }
 
+const getDepartmentCars = async (req, res) => {
+  try {
+    const { departmentId } = req.params
+
+    const departmentCars = await Car.find({
+      departmentId: mongoose.Types.ObjectId(departmentId)
+    })
+
+    if (!departmentCars) {
+      return res.status(204).end()
+    }
+
+    return res.status(200).json({ departmentCars })
+  } catch (error) {
+    console.log(error.message)
+    res.status(500).json({
+      message: 'Ошибка при получении всех машин департамента',
+      errorMessage: error.message
+    })
+  }
+}
+
 module.exports = {
   addNewCar,
-  removeCar
+  removeCar,
+  getDepartmentCars
 }

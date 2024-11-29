@@ -3,7 +3,7 @@ const { createServer } = require('node:http')
 const path = require('path')
 const mongoose = require('mongoose')
 const cookieParser = require('cookie-parser')
-// const cors = require('cors')
+const cors = require('cors')
 const dotenv = require('dotenv')
 const { initSocketIO } = require('./sockets/root')
 
@@ -19,13 +19,13 @@ const app = express()
 const server = createServer(app)
 const port = process.env.PORT || 8000
 
-// app.use(
-//     cors({
-//         origin: 'http://localhost:5173',
-//         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-//         credentials: true,
-//     }),
-// );
+app.use(
+  cors({
+    origin: 'http://localhost:5173',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true
+  })
+)
 app.use(express.json())
 app.use(cookieParser())
 app.use('/', express.static(path.join(__dirname, 'public')))
