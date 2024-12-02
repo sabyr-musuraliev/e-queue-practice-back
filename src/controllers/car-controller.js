@@ -82,7 +82,7 @@ const getDepartmentCars = async (req, res) => {
     const { departmentId } = req.params
 
     const departmentCars = await Car.find({
-      departmentId: mongoose.Types.ObjectId(departmentId)
+      departmentId: new mongoose.Types.ObjectId(departmentId)
     })
 
     if (!departmentCars) {

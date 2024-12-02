@@ -6,7 +6,8 @@ const Car = new mongoose.Schema({
   isAvailable: { type: Boolean, default: false },
   status: {
     type: String,
-    enum: ['available', 'calling', 'in-progress']
+    enum: ['available', 'calling', 'in-progress'],
+    default: 'available'
   },
   departmentId: {
     type: mongoose.Schema.Types.ObjectId,

@@ -1,20 +1,19 @@
-const mongoose = require('mongoose')
 const Department = require('../models/Department')
 const Queue = require('../models/Queue')
 const Car = require('../models/Car')
+const mongoose = require('mongoose')
+const { getIO } = require('../sockets/root')
 
 const addNewQueue = async (req, res) => {
-  const session = await mongoose.startSession()
   try {
-    const { queueType, departmentId } = req.params
+    const { queueType, departmentId } = req.body
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const department = await Department.findById(departmentId).session(session)
+    const department = await Department.findById(departmentId)
     if (!department) {
-      await session.abortTransaction()
-      return res.status(500).json({ message: 'Департамент не найден' })
+      return res.status(500).json({ message: 'Department not found' })
     }
 
     if (
@@ -31,7 +30,7 @@ const addNewQueue = async (req, res) => {
     }
 
     department.ticketCounters[queueType] += 1
-    const ticketNumber = `${queueType}${String(department.ticketCounters[queueType])}`
+    const ticketNumber = `${queueType}-${String(department.ticketCounters[queueType])}`
 
     const newTicket = new Queue({
       type: queueType,
@@ -41,17 +40,42 @@ const addNewQueue = async (req, res) => {
       status: 'waiting'
     })
 
-    const savedQueue = await newTicket.save({ session })
-    await department.save({ session })
+    const savedQueue = await newTicket.save()
+    await department.save()
 
+    console.log(savedQueue)
     res.status(201).json({
       queue: savedQueue,
       message: 'Новая очередь была зарегестрирована'
     })
   } catch (error) {
-    await session.abortTransaction()
     console.error('Ошибка при добавлении тикета:', error.message)
-    res.status(500).json({ message: 'Ошибка при регистрации новой очереди' })
+    res.status(500).json({ message: error.message })
+  }
+}
+
+const getCarsQueues = async (req, res) => {
+  try {
+    const { carId } = req.params
+
+    const car = await Car.findById(carId).lean()
+
+    if (!car) {
+      return res.status(400).json({ message: 'Не нашёл указанную машину' })
+    }
+
+    const carQueues = await Queue.find({
+      currentCar: car._id,
+      departmentId: car.departmentId
+    })
+
+    res.status(200).json({ carQueues, car })
+  } catch (error) {
+    console.log(error.message)
+    res.status(500).json({
+      message: 'Ошибка при получении талонов машины',
+      errorMessage: error.message
+    })
   }
 }
 
@@ -75,7 +99,7 @@ const callStudents = async (req, res) => {
       .sort({ createdAt: 1 })
       .limit(limit)
 
-    if (!nextQueues) {
+    if (nextQueues.length === 0) {
       return res.status(204).end()
     }
 
@@ -85,13 +109,25 @@ const callStudents = async (req, res) => {
 
     const updatedQueues = []
 
+    const queuesNumbers = []
+
     for (const queue of nextQueues) {
       queue.currentCar = car._id
       queue.startCallingTime = new Date()
       queue.status = 'calling'
+      queuesNumbers.push(queue.ticketNumber)
       const savedQueue = await queue.save()
       updatedQueues.push(savedQueue)
     }
+
+    const socketData = {
+      number: savedCar.carNumber,
+      status: savedCar.status,
+      tickets: queuesNumbers
+    }
+
+    const io = getIO()
+    io.to(String(car.departmentId)).emit('call-students', socketData)
 
     return res
       .status(200)
@@ -130,13 +166,24 @@ const startPractice = async (req, res) => {
 
     const updatedQueues = []
 
+    const queuesNumbers = []
+
     for (const queue of currentCarQueues) {
       queue.startServiceTime = new Date()
       queue.status = 'in-progress'
-
+      queuesNumbers.push(queue.ticketNumber)
       const savedQueue = await queue.save()
       updatedQueues.push(savedQueue)
     }
+
+    const socketData = {
+      number: savedCar.carNumber,
+      status: savedCar.status,
+      tickets: queuesNumbers
+    }
+
+    const io = getIO()
+    io.to(String(car.departmentId)).emit('start-practice', socketData)
 
     res.status(200).json({
       message: 'Практический экзамен начался',
@@ -154,7 +201,7 @@ const startPractice = async (req, res) => {
 
 const endPractice = async (req, res) => {
   try {
-    const { carId } = req.params
+    const { carId } = req.body
 
     const car = await Car.findById(carId)
 
@@ -184,6 +231,9 @@ const endPractice = async (req, res) => {
 
       await queue.save()
     }
+
+    const io = getIO()
+    io.to(String(car.departmentId)).emit('end-practice', car.carNumber)
 
     res.status(200).json({ message: 'Практика закончена', car: savedCar })
   } catch (error) {
@@ -247,10 +297,46 @@ const skipQueue = async (req, res) => {
   }
 }
 
+const getDepartmentsQueues = async (req, res) => {
+  try {
+    const { departmentId } = req.params
+
+    const cars = await Car.find({
+      departmentId: new mongoose.Types.ObjectId(departmentId),
+      status: { $in: ['calling', 'in-progress'] }
+    }).lean()
+
+    const result = await Promise.all(
+      cars.map(async (car) => {
+        const queues = await Queue.find({
+          currentCar: car._id,
+          status: { $in: ['calling', 'in-progress'] }
+        }).lean()
+
+        return {
+          number: car.carNumber,
+          status: car.status,
+          tickets: queues.map((queue) => queue.ticketNumber)
+        }
+      })
+    )
+
+    res.status(200).json(result)
+  } catch (error) {
+    console.log(error.message)
+    res.status(500).json({
+      message: 'Что-то пошло не так при получении списка всех сдающих',
+      errorMessage: error.message
+    })
+  }
+}
+
 module.exports = {
   addNewQueue,
   callStudents,
   startPractice,
   endPractice,
-  skipQueue
+  skipQueue,
+  getCarsQueues,
+  getDepartmentsQueues
 }
