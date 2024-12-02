@@ -9,10 +9,11 @@ const initSocketIO = (server) => {
   io.on('connection', (socket) => {
     console.log(`Клиент подключен: ${socket.id}`)
 
-    socket.on('join-department', (departmentId) => {
-      socket.join(departmentId)
-      console.log(`Клиент ${socket.id} подключился к комнате: ${departmentId}`)
-    })
+    // socket.on('join-department', (departmentId) => {
+    //   console.log(departmentId)
+    //   socket.join(departmentId)
+    //   console.log(`Клиент ${socket.id} подключился к комнате: ${departmentId}`)
+    // })
 
     socket.on('disconnect', () => {
       console.log(`Клиент отключен: ${socket.id}`)

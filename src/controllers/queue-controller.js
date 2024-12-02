@@ -127,7 +127,7 @@ const callStudents = async (req, res) => {
     }
 
     const io = getIO()
-    io.to(String(car.departmentId)).emit('call-students', socketData)
+    io.emit('call-students', socketData)
 
     return res
       .status(200)
@@ -183,7 +183,7 @@ const startPractice = async (req, res) => {
     }
 
     const io = getIO()
-    io.to(String(car.departmentId)).emit('start-practice', socketData)
+    io.emit('start-practice', socketData)
 
     res.status(200).json({
       message: 'Практический экзамен начался',
@@ -233,7 +233,7 @@ const endPractice = async (req, res) => {
     }
 
     const io = getIO()
-    io.to(String(car.departmentId)).emit('end-practice', car.carNumber)
+    io.emit('end-practice', car.carNumber)
 
     res.status(200).json({ message: 'Практика закончена', car: savedCar })
   } catch (error) {
